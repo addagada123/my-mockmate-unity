@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Virtual Try-On</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 30px;}
+        .product-img { border: 3px solid #ccc; border-radius: 9px; margin: 10px; width:120px; cursor:pointer; transition:border 0.2s;}
+        .product-img.selected { border: 4px solid #2b78e4;}
+        .color-picker-label { font-size: 16px; margin-right: 8px; }
+        #tryonBtn { font-size: 22px; padding: 14px 38px; margin: 32px; border-radius: 10px;}
+        #tryonBtn:disabled { background: #ccc; color:#999;}
+        .wrapper { display: flex; flex-wrap:wrap; justify-content:center;}
+        .section {margin:24px 0;}
+    </style>
+</head>
+<body>
+    <h1>Color Virtual Try-On</h1>
+    <form method="POST" action="/start-tryon" id="tryon_form" target="_blank">
+        <input type="hidden" name="shirt" id="shirt_input">
+        <input type="hidden" name="pant" id="pant_input">
+        <input type="hidden" name="saree" id="saree_input">
+        <input type="hidden" name="shirt_color" id="shirt_color_input" value="#ffffff">
+        <input type="hidden" name="pant_color" id="pant_color_input" value="#ffffff">
+        <input type="hidden" name="saree_color" id="saree_color_input" value="#ffffff">
+        <div class="section">
+            <div class="wrapper">
+            {% for s in shirts %}
+              <img src="{{ url_for('static', filename='images/shirts/' + s) }}"
+                   class="product-img shirt-img"
+                   id="shirt_{{ loop.index0 }}"
+                   onclick="selectDress('shirt', '{{ s }}', this)">
+            {% endfor %}
+            </div>
+            <label class="color-picker-label">Shirt color:</label>
+            <input type="color" id="shirt_color" value="#ffffff"
+                   onchange="document.getElementById('shirt_color_input').value=this.value;">
+        </div>
+        <div class="section">
+            <div class="wrapper">
+            {% for p in pants %}
+              <img src="{{ url_for('static', filename='images/pants/' + p) }}"
+                   class="product-img pant-img"
+                   id="pant_{{ loop.index0 }}"
+                   onclick="selectDress('pant', '{{ p }}', this)">
+            {% endfor %}
+            </div>
+            <label class="color-picker-label">Pant color:</label>
+            <input type="color" id="pant_color" value="#ffffff"
+                   onchange="document.getElementById('pant_color_input').value=this.value;">
+        </div>
+        <div class="section">
+            <div class="wrapper">
+            {% for s in sarees %}
+              <img src="{{ url_for('static', filename='images/saree/' + s) }}"
+                   class="product-img saree-img"
+                   id="saree_{{ loop.index0 }}"
+                   onclick="selectDress('saree', '{{ s }}', this)">
+            {% endfor %}
+            </div>
+            <label class="color-picker-label">Saree color:</label>
+            <input type="color" id="saree_color" value="#ffffff"
+                   onchange="document.getElementById('saree_color_input').value=this.value;">
+        </div>
+        <button type="submit" id="tryonBtn" disabled>Try On Selected Dress</button>
+    </form>
+    <script>
+        let selected = { shirt: null, pant: null, saree: null };
+        function selectDress(type, fname, imgEl) {
+            // Clear previous selection for this type
+            document.querySelectorAll('.' + type + '-img').forEach(el => el.classList.remove('selected'));
+            imgEl.classList.add('selected');
+            selected[type] = fname;
+            document.getElementById(type + '_input').value = fname;
+
+            // Saree is exclusive: if saree is selected, shirt and pant selections are cleared
+            if (type === 'saree' && fname) {
+                document.querySelectorAll('.shirt-img').forEach(el => el.classList.remove('selected'));
+                document.querySelectorAll('.pant-img').forEach(el => el.classList.remove('selected'));
+                selected.shirt = null; document.getElementById('shirt_input').value = '';
+                selected.pant = null; document.getElementById('pant_input').value = '';
+            }
+            // If shirt/pant selected, saree unselects
+            if ((type === 'shirt' || type === 'pant') && fname) {
+                document.querySelectorAll('.saree-img').forEach(el => el.classList.remove('selected'));
+                selected.saree = null; document.getElementById('saree_input').value = '';
+            }
+            updateTryOnBtn();
+        }
+        function updateTryOnBtn() {
+            // Enable if anything is selected
+            document.getElementById('tryonBtn').disabled = (!selected.shirt && !selected.pant && !selected.saree);
+        }
+        window.onload = updateTryOnBtn;
+    </script>
+</body>
+</html>
