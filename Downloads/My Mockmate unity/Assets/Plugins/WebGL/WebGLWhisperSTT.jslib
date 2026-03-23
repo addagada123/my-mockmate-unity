@@ -3,15 +3,17 @@ var WebGLWhisperSTT = {
         recorder: null,
         chunks: [],
         apiKey: "",
+        language: "en",
         unityObjectName: "",
         unityMethodName: ""
     },
 
-    InitWhisperSTT: function (apiKey, objectName, methodName) {
-        whisperData.apiKey = UTF8ToString(apiKey);
-        whisperData.unityObjectName = UTF8ToString(objectName);
-        whisperData.unityMethodName = UTF8ToString(methodName);
-        console.log("WhisperSTT Initialized for: " + whisperData.unityObjectName);
+    InitWhisperSTT: function (apiKey, language, objectName, methodName) {
+        _whisperData.apiKey = UTF8ToString(apiKey);
+        _whisperData.language = UTF8ToString(language);
+        _whisperData.unityObjectName = UTF8ToString(objectName);
+        _whisperData.unityMethodName = UTF8ToString(methodName);
+        console.log("WhisperSTT Initialized for: " + _whisperData.unityObjectName + " (Lang: " + _whisperData.language + ")");
     },
 
     StartRecording: function () {
@@ -22,20 +24,20 @@ var WebGLWhisperSTT = {
 
         navigator.mediaDevices.getUserMedia({ audio: true })
             .then(function (stream) {
-                whisperData.chunks = [];
-                whisperData.recorder = new MediaRecorder(stream);
-                whisperData.recorder.ondataavailable = function (e) {
-                    whisperData.chunks.push(e.data);
+                _whisperData.chunks = [];
+                _whisperData.recorder = new MediaRecorder(stream);
+                _whisperData.recorder.ondataavailable = function (e) {
+                    _whisperData.chunks.push(e.data);
                 };
-                whisperData.recorder.onstop = function () {
-                    if (whisperData.vadInterval) { clearInterval(whisperData.vadInterval); }
-                    var blob = new Blob(whisperData.chunks, { type: 'audio/wav' });
-                    SendToWhisper(blob);
+                _whisperData.recorder.onstop = function () {
+                    if (_whisperData.vadInterval) { clearInterval(_whisperData.vadInterval); }
+                    var blob = new Blob(_whisperData.chunks, { type: 'audio/wav' });
+                    _SendToWhisper(blob);
                     
                     // Stop all tracks to release microphone
-                    stream.getTracks().forEach(track => track.stop());
+                    stream.getTracks().forEach(function(track) { track.stop(); });
                 };
-                whisperData.recorder.start();
+                _whisperData.recorder.start();
                 console.log("Recording started...");
 
                 // --- VAD Logic ---
@@ -54,9 +56,9 @@ var WebGLWhisperSTT = {
                         var silenceThreshold = 5; 
                         var silenceDelayMs = 3500;
                         
-                        whisperData.vadInterval = setInterval(function() {
-                            if (!whisperData.recorder || whisperData.recorder.state === "inactive") {
-                                clearInterval(whisperData.vadInterval);
+                        _whisperData.vadInterval = setInterval(function() {
+                            if (!_whisperData.recorder || _whisperData.recorder.state === "inactive") {
+                                clearInterval(_whisperData.vadInterval);
                                 return;
                             }
                             
@@ -72,9 +74,9 @@ var WebGLWhisperSTT = {
                                 if (isSpeaking && (Date.now() - silenceStart > silenceDelayMs)) {
                                     console.log("WebGL VAD: Silence detected! Auto-stopping recording.");
                                     isSpeaking = false;
-                                    clearInterval(whisperData.vadInterval);
-                                    whisperData.recorder.stop();
-                                    SendMessage(whisperData.unityObjectName, "OnRecordingAutoStopped", "");
+                                    clearInterval(_whisperData.vadInterval);
+                                    _whisperData.recorder.stop();
+                                    SendMessage(_whisperData.unityObjectName, "OnRecordingAutoStopped", "");
                                 }
                             }
                         }, 100);
@@ -90,8 +92,8 @@ var WebGLWhisperSTT = {
     },
 
     StopRecording: function () {
-        if (whisperData.recorder && whisperData.recorder.state !== "inactive") {
-            whisperData.recorder.stop();
+        if (_whisperData.recorder && _whisperData.recorder.state !== "inactive") {
+            _whisperData.recorder.stop();
             console.log("Recording stopped.");
         }
     },
@@ -100,22 +102,25 @@ var WebGLWhisperSTT = {
         var formData = new FormData();
         formData.append("file", blob, "recording.wav");
         formData.append("model", "whisper-1");
+        if (_whisperData.language) {
+            formData.append("language", _whisperData.language);
+        }
 
         fetch("https://api.openai.com/v1/audio/transcriptions", {
             method: "POST",
             headers: {
-                "Authorization": "Bearer " + whisperData.apiKey
+                "Authorization": "Bearer " + _whisperData.apiKey
             },
             body: formData
         })
-        .then(response => response.json())
-        .then(data => {
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
             var transcript = data.text || "";
-            SendMessage(whisperData.unityObjectName, whisperData.unityMethodName, transcript);
+            SendMessage(_whisperData.unityObjectName, _whisperData.unityMethodName, transcript);
         })
-        .catch(error => {
+        .catch(function(error) {
             console.error("Whisper API Error: ", error);
-            SendMessage(whisperData.unityObjectName, whisperData.unityMethodName, "ERROR: " + error.message);
+            SendMessage(_whisperData.unityObjectName, _whisperData.unityMethodName, "ERROR: " + error.message);
         });
     }
 };
