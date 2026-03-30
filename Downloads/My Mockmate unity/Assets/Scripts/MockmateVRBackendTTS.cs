@@ -14,10 +14,12 @@ public class MockmateVRBackendTTS : MonoBehaviour
     [Header("Dependencies")]
     [SerializeField] private MockmateVRApiClient apiClient;
     [SerializeField] private AudioSource audioSource;
+    [SerializeField] private MockmateVRAnimationBridge animationBridge;
+    [SerializeField] private MockmateVRFlowController flowController;
 
     [Header("Voice")]
     [SerializeField] private string voice = "alloy";
-    [SerializeField] private string model = "gpt-4o-mini-tts";
+    [SerializeField] private string model = "tts-1";
     [SerializeField] private string instructions = "";
     [SerializeField] private string responseFormat = "wav";
 
@@ -29,36 +31,20 @@ public class MockmateVRBackendTTS : MonoBehaviour
 
     private void Awake()
     {
-        if (apiClient == null)
-            apiClient = GetComponent<MockmateVRApiClient>();
-        if (audioSource == null)
-            audioSource = GetComponent<AudioSource>();
+        if (apiClient == null) apiClient = GetComponent<MockmateVRApiClient>();
+        if (audioSource == null) audioSource = GetComponent<AudioSource>();
+        if (animationBridge == null) animationBridge = FindFirstObjectByType<MockmateVRAnimationBridge>();
+        if (flowController == null) flowController = FindFirstObjectByType<MockmateVRFlowController>();
     }
+
     public IEnumerator Speak(string text)
     {
         LastSpeakSucceeded = false;
-        Debug.Log($"[MockmateVR-TTS] Speak called with text: {text}");
-        if (string.IsNullOrWhiteSpace(text))
+        Debug.Log($"[MockmateVR-TTS] Speak called: {text}");
+        
+        if (string.IsNullOrWhiteSpace(text) || apiClient == null || audioSource == null)
         {
-            Debug.LogWarning("[MockmateVR-TTS] Speak text is null or whitespace.");
-            yield break;
-        }
-
-        if (apiClient == null)
-        {
-            Debug.LogWarning("[MockmateVR-TTS] API client missing.");
-            yield break;
-        }
-
-        if (audioSource == null)
-        {
-            Debug.LogWarning("[MockmateVR-TTS] AudioSource missing.");
-            yield break;
-        }
-
-        if (string.IsNullOrWhiteSpace(apiClient.ApiBase) || string.IsNullOrWhiteSpace(apiClient.BridgeToken))
-        {
-            Debug.LogWarning("[MockmateVR-TTS] API base or bridge token missing.");
+            Debug.LogWarning("[MockmateVR-TTS] Missing dependencies or empty text.");
             yield break;
         }
 
@@ -66,7 +52,6 @@ public class MockmateVRBackendTTS : MonoBehaviour
             audioSource.Stop();
 
         string url = $"{apiClient.ApiBase.TrimEnd('/')}/vr-bridge/tts";
-        Debug.Log($"[MockmateVR-TTS] Sending request to {url} with bridge token: {apiClient.BridgeToken.Substring(0, Math.Min(8, apiClient.BridgeToken.Length))}...");
         TTSRequest payload = new TTSRequest
         {
             bridge_token = apiClient.BridgeToken,
@@ -92,11 +77,9 @@ public class MockmateVRBackendTTS : MonoBehaviour
 
             if (req.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning($"[MockmateVR-TTS] Request failed: {req.responseCode} {req.error}.");
+                Debug.LogWarning($"[MockmateVR-TTS] Request failed: {req.responseCode} {req.error}");
                 yield break;
             }
-
-            Debug.Log($"[MockmateVR-TTS] Request success. Status Code: {req.responseCode}. Data length: {req.downloadHandler.data.Length} bytes.");
 
             AudioClip clip = null;
             try
@@ -105,23 +88,29 @@ public class MockmateVRBackendTTS : MonoBehaviour
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[MockmateVR-TTS] Audio decode failed: {ex.Message}");
+                Debug.LogWarning($"[MockmateVR-TTS] Decode failed: {ex.Message}");
                 yield break;
             }
 
             if (clip == null)
             {
-                Debug.LogWarning("[MockmateVR-TTS] Backend returned no audio clip.");
+                Debug.LogWarning("[MockmateVR-TTS] No clip returned.");
                 yield break;
             }
 
             audioSource.clip = clip;
-            Debug.Log("[MockmateVR-TTS] Starting audio playback.");
+            if (animationBridge != null) animationBridge.StartTalking();
             audioSource.Play();
             LastSpeakSucceeded = true;
+            Debug.Log($"[MockmateVR-TTS] Playing clip. Length: {clip.length:F1}s");
 
+            // Wait for playback to finish. Null-check audioSource in case it gets
+            // destroyed or disabled mid-play (e.g., scene transition).
             while (audioSource != null && audioSource.isPlaying)
                 yield return null;
+
+            if (animationBridge != null) animationBridge.StopTalking();
+            Debug.Log("[MockmateVR-TTS] Playback complete.");
         }
     }
 

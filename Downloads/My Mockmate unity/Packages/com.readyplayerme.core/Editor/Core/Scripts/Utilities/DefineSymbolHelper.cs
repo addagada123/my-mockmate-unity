@@ -24,7 +24,12 @@ namespace ReadyPlayerMe.Core.Editor
                 }
 
                 // Use BuildTargetGroup directly to avoid NamedBuildTarget compilation issues in some environments
+#if UNITY_2021_2_OR_NEWER
+                NamedBuildTarget namedBuildTarget = NamedBuildTarget.FromBuildTargetGroup(group);
+                string defineSymbolsStr = PlayerSettings.GetScriptingDefineSymbols(namedBuildTarget);
+#else
                 string defineSymbolsStr = PlayerSettings.GetScriptingDefineSymbolsForGroup(group);
+#endif
                 List<string> defineSymbols = defineSymbolsStr.Split(';').Select(d => d.Trim()).ToList();
 
                 if (addSymbol && !defineSymbols.Contains(defineSymbol))
@@ -42,7 +47,11 @@ namespace ReadyPlayerMe.Core.Editor
 
                 try
                 {
+#if UNITY_2021_2_OR_NEWER
+                    PlayerSettings.SetScriptingDefineSymbols(namedBuildTarget, string.Join(";", defineSymbols.ToArray()));
+#else
                     PlayerSettings.SetScriptingDefineSymbolsForGroup(group, string.Join(";", defineSymbols.ToArray()));
+#endif
                 }
                 catch (Exception e)
                 {

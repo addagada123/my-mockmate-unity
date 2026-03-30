@@ -28,7 +28,9 @@ public class AudioRecorder : MonoBehaviour
         openAIWhisper.StartSpeechToText();
 
         Debug.Log("Recording started (OpenAI)");
+#if !UNITY_WEBGL
         float silenceTimer = 0f;
+#endif
         float startedAt = Time.time;
         while (true)
         {

@@ -1,19 +1,19 @@
 var WebGLWhisperSTT = {
-    $whisperData: {
-        recorder: null,
-        chunks: [],
-        apiKey: "",
-        language: "en",
-        unityObjectName: "",
-        unityMethodName: ""
-    },
-
-    InitWhisperSTT: function (apiKey, language, objectName, methodName) {
-        _whisperData.apiKey = UTF8ToString(apiKey);
-        _whisperData.language = UTF8ToString(language);
-        _whisperData.unityObjectName = UTF8ToString(objectName);
-        _whisperData.unityMethodName = UTF8ToString(methodName);
-        console.log("WhisperSTT Initialized for: " + _whisperData.unityObjectName + " (Lang: " + _whisperData.language + ")");
+    InitWhisperSTT: function (bridgeToken, apiBase, language, objectName, methodName) {
+        // Merge with _whisperData so bridge_token set by index.html is available
+        var existing = window._whisperData || {};
+        window.WebGLWhisperState = {
+            recorder: null,
+            chunks: [],
+            bridgeToken: UTF8ToString(bridgeToken) || existing.bridgeToken || "",
+            apiBase: UTF8ToString(apiBase) || existing.apiBase || "",
+            language: UTF8ToString(language) || existing.language || "en",
+            unityObjectName: UTF8ToString(objectName),
+            unityMethodName: UTF8ToString(methodName)
+        };
+        // Keep _whisperData in sync
+        window._whisperData = window.WebGLWhisperState;
+        console.log("WhisperSTT Initialized via Proxy: " + window.WebGLWhisperState.apiBase);
     },
 
     StartRecording: function () {
@@ -22,23 +22,59 @@ var WebGLWhisperSTT = {
             return;
         }
 
+        if (!window.WebGLWhisperState) window.WebGLWhisperState = {};
+
         navigator.mediaDevices.getUserMedia({ audio: true })
             .then(function (stream) {
-                _whisperData.chunks = [];
-                _whisperData.recorder = new MediaRecorder(stream);
-                _whisperData.recorder.ondataavailable = function (e) {
-                    _whisperData.chunks.push(e.data);
+                window.WebGLWhisperState.chunks = [];
+                window.WebGLWhisperState.recorder = new MediaRecorder(stream);
+                window.WebGLWhisperState.recorder.ondataavailable = function (e) {
+                    window.WebGLWhisperState.chunks.push(e.data);
                 };
-                _whisperData.recorder.onstop = function () {
-                    if (_whisperData.vadInterval) { clearInterval(_whisperData.vadInterval); }
-                    var blob = new Blob(_whisperData.chunks, { type: 'audio/wav' });
-                    _SendToWhisper(blob);
+                window.WebGLWhisperState.recorder.onstop = function () {
+                    if (window.WebGLWhisperState.vadInterval) { clearInterval(window.WebGLWhisperState.vadInterval); }
+                    var blob = new Blob(window.WebGLWhisperState.chunks, { type: 'audio/wav' });
+
+                    // --- Inline SendToWhisper logic ---
+                    var state = window.WebGLWhisperState;
+                    var formData = new FormData();
+                    formData.append("file", blob, "recording.wav");
+                    
+                    var url = state.apiBase + "/vr-bridge/transcribe?bridge_token=" + encodeURIComponent(state.bridgeToken);
+                    if (state.language) {
+                        url += "&language=" + encodeURIComponent(state.language);
+                    }
+
+                    fetch(url, {
+                        method: "POST",
+                        body: formData
+                    })
+                    .then(function(response) { 
+                        if (!response.ok) throw new Error("Proxy error: " + response.status);
+                        return response.json(); 
+                    })
+                    .then(function(data) {
+                        var transcript = (data.text || "").trim();
+                        // Only forward to Unity if we got actual speech content
+                        if (transcript) {
+                            SendMessage(state.unityObjectName, state.unityMethodName, transcript);
+                        } else {
+                            console.warn("[WhisperSTT] Empty transcript returned - skipping SendMessage.");
+                        }
+                    })
+                    .catch(function(error) {
+                        // CRITICAL FIX: Do NOT send "ERROR:..." strings to Unity.
+                        // If they reach Unity they get appended to the transcript and
+                        // submitted as the user's answer, causing 409 index conflicts.
+                        console.warn("[WhisperSTT] Transcription failed (will not send to Unity):", error.message);
+                    });
+                    // --- End Inline SendToWhisper ---
                     
                     // Stop all tracks to release microphone
                     stream.getTracks().forEach(function(track) { track.stop(); });
                 };
-                _whisperData.recorder.start();
-                console.log("Recording started...");
+                window.WebGLWhisperState.recorder.start();
+                console.log("Recording started (Proxy mode)...");
 
                 // --- VAD Logic ---
                 try {
@@ -56,9 +92,9 @@ var WebGLWhisperSTT = {
                         var silenceThreshold = 5; 
                         var silenceDelayMs = 3500;
                         
-                        _whisperData.vadInterval = setInterval(function() {
-                            if (!_whisperData.recorder || _whisperData.recorder.state === "inactive") {
-                                clearInterval(_whisperData.vadInterval);
+                        window.WebGLWhisperState.vadInterval = setInterval(function() {
+                            if (!window.WebGLWhisperState.recorder || window.WebGLWhisperState.recorder.state === "inactive") {
+                                clearInterval(window.WebGLWhisperState.vadInterval);
                                 return;
                             }
                             
@@ -74,9 +110,9 @@ var WebGLWhisperSTT = {
                                 if (isSpeaking && (Date.now() - silenceStart > silenceDelayMs)) {
                                     console.log("WebGL VAD: Silence detected! Auto-stopping recording.");
                                     isSpeaking = false;
-                                    clearInterval(_whisperData.vadInterval);
-                                    _whisperData.recorder.stop();
-                                    SendMessage(_whisperData.unityObjectName, "OnRecordingAutoStopped", "");
+                                    clearInterval(window.WebGLWhisperState.vadInterval);
+                                    window.WebGLWhisperState.recorder.stop();
+                                    SendMessage(window.WebGLWhisperState.unityObjectName, "OnRecordingAutoStopped", "");
                                 }
                             }
                         }, 100);
@@ -92,39 +128,12 @@ var WebGLWhisperSTT = {
     },
 
     StopRecording: function () {
-        if (_whisperData.recorder && _whisperData.recorder.state !== "inactive") {
-            _whisperData.recorder.stop();
+        if (window.WebGLWhisperState && window.WebGLWhisperState.recorder && window.WebGLWhisperState.recorder.state !== "inactive") {
+            window.WebGLWhisperState.recorder.stop();
             console.log("Recording stopped.");
         }
-    },
-
-    $SendToWhisper: function (blob) {
-        var formData = new FormData();
-        formData.append("file", blob, "recording.wav");
-        formData.append("model", "whisper-1");
-        if (_whisperData.language) {
-            formData.append("language", _whisperData.language);
-        }
-
-        fetch("https://api.openai.com/v1/audio/transcriptions", {
-            method: "POST",
-            headers: {
-                "Authorization": "Bearer " + _whisperData.apiKey
-            },
-            body: formData
-        })
-        .then(function(response) { return response.json(); })
-        .then(function(data) {
-            var transcript = data.text || "";
-            SendMessage(_whisperData.unityObjectName, _whisperData.unityMethodName, transcript);
-        })
-        .catch(function(error) {
-            console.error("Whisper API Error: ", error);
-            SendMessage(_whisperData.unityObjectName, _whisperData.unityMethodName, "ERROR: " + error.message);
-        });
     }
 };
 
-autoAddDeps(WebGLWhisperSTT, '$whisperData');
-autoAddDeps(WebGLWhisperSTT, '$SendToWhisper');
 mergeInto(LibraryManager.library, WebGLWhisperSTT);
+

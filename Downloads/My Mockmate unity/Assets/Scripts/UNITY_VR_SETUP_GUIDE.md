@@ -1,4 +1,4 @@
-# Mockmate VR — Unity Setup Guide
+# Mockmate VR â€” Unity Setup Guide
 
 Step-by-step instructions to set up your Unity project so that pressing **"Take Test in VR"** on the web app automatically starts the VR interview in Unity.
 
@@ -12,62 +12,62 @@ Step-by-step instructions to set up your Unity project so that pressing **"Take 
 
 ---
 
-## Step 1 — Import the Scripts
+## Step 1 â€” Import the Scripts
 
 Copy these **4 C# files** from the `unity/` folder into your Unity project's `Assets/Scripts/Mockmate/` folder:
 
 | File | Purpose |
 |------|---------|
 | `MockmateVRApiClient.cs` | Makes HTTP calls to the Mockmate backend |
-| `MockmateVRFlowController.cs` | Manages the interview lifecycle (question → speak → listen → submit) |
+| `MockmateVRFlowController.cs` | Manages the interview lifecycle (question â†’ speak â†’ listen â†’ submit) |
 | `MockmateVRDeepLinkBootstrap.cs` | Handles deep link launches (backup method) |
 | `MockmateVRTokenPoller.cs` | Polls for bridge tokens automatically |
-| `MockmateVRAnimationBridge.cs` | **NEW** — Handles mouth, jaw, and typing animations |
-| `MockmateVRBackendTTS.cs` | **NEW** — Proxies TTS through the Mockmate backend for WebGL |
+| `MockmateVRAnimationBridge.cs` | **NEW** â€” Handles mouth, jaw, and typing animations |
+| `MockmateVRBackendTTS.cs` | **NEW** â€” Proxies TTS through the Mockmate backend for WebGL |
 
 ---
 
-## Step 2 — Set Up the Scene Hierarchy
+## Step 2 â€” Set Up the Scene Hierarchy
 
 Create a single GameObject in your scene with all the scripts attached:
 
-1. **Create** → **Empty Object** → name it **`MockmateVRManager`**
-2. **Add Component** → `MockmateVRApiClient`
-3. **Add Component** → `MockmateVRFlowController`
-4. **Add Component** → `MockmateVRTokenPoller`
-5. **Add Component** → `MockmateVRDeepLinkBootstrap`
-6. **Add Component** → `MockmateVRAnimationBridge`
+1. **Create** â†’ **Empty Object** â†’ name it **`MockmateVRManager`**
+2. **Add Component** â†’ `MockmateVRApiClient`
+3. **Add Component** â†’ `MockmateVRFlowController`
+4. **Add Component** â†’ `MockmateVRTokenPoller`
+5. **Add Component** â†’ `MockmateVRDeepLinkBootstrap`
+6. **Add Component** â†’ `MockmateVRAnimationBridge`
 
 Your Inspector for `MockmateVRManager` should show all 4 scripts.
 
 ---
 
-## Step 3 — Configure the Inspector
+## Step 3 â€” Configure the Inspector
 
 ### MockmateVRApiClient
 | Field | Value |
 |-------|-------|
-| Api Base | `https://mockmate-api-gna1.onrender.com` (or your local URL) |
-| Bridge Token | *Leave empty* — this gets auto-filled |
+| Api Base | `https://mockmate-api-6dvm.onrender.com` (or your local URL) |
+| Bridge Token | *Leave empty* â€” this gets auto-filled |
 
 ### MockmateVRFlowController
 | Field | Value |
 |-------|-------|
 | Api Client | Drag the `MockmateVRManager` GameObject here |
-| Auto Start When Token Present | ✅ Checked |
+| Auto Start When Token Present | âœ… Checked |
 | Simulated Speak Chars Per Second | `18` |
 | Prep Time Seconds | `10` |
 | Silence Gap Seconds | `3` |
 
-### MockmateVRTokenPoller ⭐ (Key Script)
+### MockmateVRTokenPoller â­ (Key Script)
 | Field | Value |
 |-------|-------|
 | Flow Controller | Drag the `MockmateVRManager` GameObject here |
 | Api Client | Drag the `MockmateVRManager` GameObject here |
 | Poll Interval Seconds | `2.5` |
 | Device Id | *Leave empty* (auto-uses `SystemInfo.deviceUniqueIdentifier`) **OR** paste your **session ID** from the web app |
-| Api Base | `https://mockmate-api-gna1.onrender.com` |
-| Poll Local File | ✅ Checked |
+| Api Base | `https://mockmate-api-6dvm.onrender.com` |
+| Poll Local File | âœ… Checked |
 | Local Folder Name | `MockmateVR` |
 | Local File Name | `bridge_token.json` |
 
@@ -75,8 +75,8 @@ Your Inspector for `MockmateVRManager` should show all 4 scripts.
 | Field | Value |
 |-------|-------|
 | Flow Controller | Drag the `MockmateVRManager` GameObject here |
-| Default Api Base | `https://mockmate-api-gna1.onrender.com` |
-| Auto Begin On Deep Link | ✅ Checked |
+| Default Api Base | `https://mockmate-api-6dvm.onrender.com` |
+| Auto Begin On Deep Link | âœ… Checked |
 
 ### MockmateVRBackendTTS (Optional for Audio)
 | Field | Value |
@@ -93,7 +93,7 @@ Your Inspector for `MockmateVRManager` should show all 4 scripts.
 
 ---
 
-## Step 4 — Wire Up Your VR UI (Events)
+## Step 4 â€” Wire Up Your VR UI (Events)
 
 Connect the `MockmateVRFlowController` events to your VR UI elements:
 
@@ -126,14 +126,14 @@ This feeds real-time transcription into the flow controller. After silence is de
 
 ---
 
-## Step 5 — Set Device ID (Important!)
+## Step 5 â€” Set Device ID (Important!)
 
 The **Device ID** is how Unity knows which bridge token to pick up. You have two options:
 
 ### Option A: Auto-generated (Default)
 Leave the `Device Id` field empty. Unity will use `SystemInfo.deviceUniqueIdentifier`. 
 
-> ⚠️ With this option, you need to tell the web app your device's unique ID. You can find it by adding a `Debug.Log(SystemInfo.deviceUniqueIdentifier)` to your scene.
+> âš ï¸ With this option, you need to tell the web app your device's unique ID. You can find it by adding a `Debug.Log(SystemInfo.deviceUniqueIdentifier)` to your scene.
 
 ### Option B: Use Session ID (Recommended for Development)
 Set the `Device Id` to match the **session ID** shown on the VR Test Control panel in the web app. The web app automatically registers the token with this ID.
@@ -143,34 +143,34 @@ Set a custom string like `"my-quest-3"` and configure the web app to use the sam
 
 ---
 
-## Step 6 — Build Settings
+## Step 6 â€” Build Settings
 
 ### For Quest (Android)
-1. **File** → **Build Settings** → Switch to **Android**
-2. **XR Plugin Management** → Enable **Oculus** or **OpenXR**
-3. **Player Settings** → **Other Settings** → Minimum API Level: **29+**
+1. **File** â†’ **Build Settings** â†’ Switch to **Android**
+2. **XR Plugin Management** â†’ Enable **Oculus** or **OpenXR**
+3. **Player Settings** â†’ **Other Settings** â†’ Minimum API Level: **29+**
 4. Build and Run
 
 ### For PC VR (SteamVR / Oculus Link)
-1. **File** → **Build Settings** → Switch to **Windows**
-2. **XR Plugin Management** → Enable **OpenXR** or **Oculus**
+1. **File** â†’ **Build Settings** â†’ Switch to **Windows**
+2. **XR Plugin Management** â†’ Enable **OpenXR** or **Oculus**
 3. Build and Run
 
 ---
 
-## Step 7 — Test the Full Flow
+## Step 7 â€” Test the Full Flow
 
 1. Open your Unity project and press **Play** (or deploy to headset)
 2. Unity shows: *"Waiting for bridge token from web app..."*
-3. On the web app, select a topic → choose difficulty → click **"Take Test in VR"**
+3. On the web app, select a topic â†’ choose difficulty â†’ click **"Take Test in VR"**
 4. Unity automatically picks up the token and starts the interview
 5. The interviewer "speaks" the question (or you wire it to TTS)
-6. You answer via your microphone (connected to STT → `AppendTranscriptChunk`)
+6. You answer via your microphone (connected to STT â†’ `AppendTranscriptChunk`)
 7. After all questions, scores appear on both Unity and the web dashboard
 
 ---
 
-## Step 8 — Enable Desktop VR App Launch (Optional)
+## Step 8 â€” Enable Desktop VR App Launch (Optional)
 
 To make the **"Desktop App"** button automatically open your Unity build:
 
@@ -191,22 +191,22 @@ To make the **"Desktop App"** button automatically open your Unity build:
 
 ```
 Web App clicks "Take Test in VR"
-         │
-         ├─── POST /vr-test/start → gets bridge_token
-         │
-         ├─── POST /vr-bridge/register-token → stores token for polling
-         │
-         ├─── Deep link attempt (URL: mockmate://start-vr?...)
-         │     └─── Launches your .exe (if Step 8 is done)
-         │
-         └─── Downloads bridge_token.json (backup for manual copy)
+         â”‚
+         â”œâ”€â”€â”€ POST /vr-test/start â†’ gets bridge_token
+         â”‚
+         â”œâ”€â”€â”€ POST /vr-bridge/register-token â†’ stores token for polling
+         â”‚
+         â”œâ”€â”€â”€ Deep link attempt (URL: mockmate://start-vr?...)
+         â”‚     â””â”€â”€â”€ Launches your .exe (if Step 8 is done)
+         â”‚
+         â””â”€â”€â”€ Downloads bridge_token.json (backup for manual copy)
 
 Unity (running in Play mode / on headset)
-         │
-         ├─── Polls GET /vr-bridge/token-poll every 2.5 seconds
-         │     └─── When token found → auto-starts interview
-         │
-         └─── Also checks %APPDATA%/MockmateVR/bridge_token.json (if polling fails)
+         â”‚
+         â”œâ”€â”€â”€ Polls GET /vr-bridge/token-poll every 2.5 seconds
+         â”‚     â””â”€â”€â”€ When token found â†’ auto-starts interview
+         â”‚
+         â””â”€â”€â”€ Also checks %APPDATA%/MockmateVR/bridge_token.json (if polling fails)
 ```
 
 ## Troubleshooting

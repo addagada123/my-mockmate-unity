@@ -19,11 +19,11 @@ public class MockmateVRTokenPoller : MonoBehaviour
     [Tooltip("How often (seconds) to check for a new token.")]
     [SerializeField] private float pollIntervalSeconds = 2.5f;
 
-    [Tooltip("Your unique device ID — must match what the web app sends. Default: 'mockmate-vr-default'.")]
+    [Tooltip("Your unique device ID â€” must match what the web app sends. Default: 'mockmate-vr-default'.")]
     [SerializeField] private string deviceId = "mockmate-vr-default";
 
     [Tooltip("API base URL of the Mockmate backend.")]
-    [SerializeField] private string apiBase = "https://mockmate-api-gna1.onrender.com";
+    [SerializeField] private string apiBase = "https://mockmate-api-6dvm.onrender.com";
 
     [Header("Local File Polling (optional)")]
     [Tooltip("Also poll a local JSON file for the bridge token (written by the web app).")]

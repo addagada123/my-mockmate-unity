@@ -1,15 +1,17 @@
 using UnityEngine;
+using System.Collections;
 using System.Runtime.InteropServices;
 
 public class WebGLWhisperSTT : MonoBehaviour
 {
-    public string apiKey = "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";
+    [SerializeField] private MockmateVRApiClient apiClient;
     public string language = "en";
     public STTClient sttClient;
+    public STTClient.TranscriptChunkEvent OnTranscriptChunk;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
-    private static extern void InitWhisperSTT(string apiKey, string language, string objectName, string methodName);
+    private static extern void InitWhisperSTT(string bridgeToken, string apiBase, string language, string objectName, string methodName);
 
     [DllImport("__Internal")]
     private static extern void StartRecording();
@@ -20,13 +22,35 @@ public class WebGLWhisperSTT : MonoBehaviour
 
     void Start()
     {
+        if (apiClient == null)
+            apiClient = FindAnyObjectByType<MockmateVRApiClient>();
+            
+        if (sttClient == null)
+            sttClient = FindAnyObjectByType<STTClient>();
+
+        StartCoroutine(InitializeProxyRoutine());
+    }
+
+    private IEnumerator InitializeProxyRoutine()
+    {
 #if UNITY_WEBGL && !UNITY_EDITOR
-        if (string.IsNullOrEmpty(apiKey))
+        // Wait for API client to have a token
+        while (apiClient != null && string.IsNullOrEmpty(apiClient.BridgeToken))
         {
-            Debug.LogError("WebGLWhisperSTT: API Key is missing!");
-            return;
+            yield return new WaitForSeconds(0.5f);
         }
-        InitWhisperSTT(apiKey, language, gameObject.name, "OnTranscriptionReceived");
+
+        if (apiClient != null && !string.IsNullOrEmpty(apiClient.BridgeToken))
+        {
+            Debug.Log("WebGLWhisperSTT: Initializing with Bridge Token.");
+            InitWhisperSTT(apiClient.BridgeToken, apiClient.ApiBase, language, gameObject.name, "OnTranscriptionReceived");
+        }
+        else
+        {
+            Debug.LogError("WebGLWhisperSTT: Failed to initialize. MockmateVRApiClient or Bridge Token missing.");
+        }
+#else
+        yield break;
 #endif
     }
 
@@ -56,13 +80,28 @@ public class WebGLWhisperSTT : MonoBehaviour
         isRecording = false;
     }
 
-    // Called from JSLib via SendMessage
-    public void OnTranscriptionReceived(string text)
+    // Called from JSLib via SendMessage (bridged systems)
+    public void OnTranscriptionReceived(string text) => OnTranscriptChunkReceived(text);
+
+    // Called from index.html manually or via JSLib
+    public void OnTranscriptChunkReceived(string text)
     {
-        Debug.Log("WebGL Whisper Result: " + text);
-        if (sttClient != null)
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        // Guard: drop error strings — they must never reach the FlowController
+        // as they would be submitted as the user's answer, causing 409 conflicts.
+        if (text.TrimStart().StartsWith("ERROR:", System.StringComparison.OrdinalIgnoreCase))
         {
-            sttClient.OnSpeechRecognized(text);
+            Debug.LogWarning("[WebGLWhisperSTT] Dropped error string: " + text);
+            return;
         }
+
+        Debug.Log("[WebGLWhisperSTT] Transcript received: " + text);
+
+        if (OnTranscriptChunk != null)
+            OnTranscriptChunk.Invoke(text);
+
+        if (sttClient != null)
+            sttClient.OnSpeechRecognized(text);
     }
 }

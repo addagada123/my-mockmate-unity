@@ -20,8 +20,17 @@ public class MockmateVRAnimationBridge : MonoBehaviour
 
     [Header("Blend Shape Lip Sync (Optional)")]
     public SkinnedMeshRenderer faceRenderer;
-    [Tooltip("Common names include OpenMouth, MouthOpen, JawOpen, viseme_aa.")]
-    public string[] mouthBlendShapeNames = { "OpenMouth", "MouthOpen", "JawOpen", "viseme_aa" };
+    [Tooltip("Common names include MouthOpen, mouthOpen, viseme_aa, viseme_O. Check the Unity Console on startup for available blend shape names on your avatar.")]
+    public string[] mouthBlendShapeNames = { 
+        // Optimized for Ready Player Me & High-Fidelity avatars
+        "mouthOpen", "MouthOpen", "viseme_aa", "viseme_O", "viseme_E", "viseme_U", "viseme_kk", "viseme_CH",
+        // Generic / Mixamo
+        "OpenMouth", "JawOpen", "Jaw_Open",
+        // MetaHuman / ARKit 
+        "jawOpen", "mouthClose",
+        // VRoid / VRM
+        "A", "Oh", "Aa",
+    };
     [Range(0f, 100f)] public float mouthBlendShapeMaxWeight = 100f;
     [Range(0f, 100f)] public float mouthBlendShapeRestWeight = 0f;
     [Range(0f, 1f)] public float mouthBlendShapeSmoothing = 0.2f;
@@ -33,11 +42,56 @@ public class MockmateVRAnimationBridge : MonoBehaviour
 
     void Start()
     {
-        if (animator == null) animator = GetComponent<Animator>();
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+        if (faceRenderer == null)
+            faceRenderer = FindFaceRenderer();
+
         if (jawBone != null) _jawStartRot = jawBone.localRotation;
         CacheMouthBlendShapes();
         ApplyMouthWeight(mouthBlendShapeRestWeight, true);
+        
+        Debug.Log($"[MockmateVR-Animation] Ready. Animator={animator != null} FaceRenderer={faceRenderer != null} JawBone={jawBone != null} BlendShapes={(_mouthBlendShapeIndices != null ? _mouthBlendShapeIndices.Length.ToString() : "0")}");
     }
+
+    private SkinnedMeshRenderer FindFaceRenderer()
+    {
+        SkinnedMeshRenderer[] smrs = GetComponentsInChildren<SkinnedMeshRenderer>();
+        string[] priorityKeywords = { "Renderer_Face", "Head", "Face", "Avatar" };
+
+        // Phase 1: priority name match
+        foreach (string kw in priorityKeywords)
+            foreach (var smr in smrs)
+                if (smr.sharedMesh != null && smr.sharedMesh.blendShapeCount > 0 &&
+                    smr.name.IndexOf(kw, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    Debug.Log($"[MockmateVR-Animation] Found face renderer (priority): {smr.name}");
+                    LogBlendShapes(smr);
+                    return smr;
+                }
+
+        // Phase 2: first renderer with ANY blend shapes
+        foreach (var smr in smrs)
+            if (smr.sharedMesh != null && smr.sharedMesh.blendShapeCount > 0)
+            {
+                Debug.Log($"[MockmateVR-Animation] Found renderer with blend shapes (fallback): {smr.name}");
+                LogBlendShapes(smr);
+                return smr;
+            }
+
+        Debug.LogWarning("[MockmateVR-Animation] No SkinnedMeshRenderer with blend shapes found. Lip sync will use Animator only.");
+        return null;
+    }
+
+    private static void LogBlendShapes(SkinnedMeshRenderer smr)
+    {
+        if (smr.sharedMesh == null) return;
+        System.Text.StringBuilder sb = new System.Text.StringBuilder();
+        sb.AppendLine($"[MockmateVR-Animation] Blend shapes on '{smr.name}' ({smr.sharedMesh.blendShapeCount} total):");
+        for (int i = 0; i < smr.sharedMesh.blendShapeCount; i++)
+            sb.AppendLine($"  [{i}] {smr.sharedMesh.GetBlendShapeName(i)}");
+        Debug.Log(sb.ToString());
+    }
+
 
     [ContextMenu("Start Talking")]
     public void StartTalking()
@@ -80,21 +134,33 @@ public class MockmateVRAnimationBridge : MonoBehaviour
 
         if (_isSpeaking && jawBone != null)
         {
-            float noise = Mathf.PerlinNoise(Time.time * talkSpeed * 0.5f, 0f) * talkJitter;
-            float angle = Mathf.Abs(Mathf.Sin(Time.time * talkSpeed + noise)) * jawOpenAmount;
-            jawBone.localRotation = _jawStartRot * Quaternion.Euler(angle, 0, 0);
+            // Multi-frequency noise for more natural jaw movement
+            float noise = Mathf.PerlinNoise(Time.time * talkSpeed * 0.7f, 0f) * 0.5f + 
+                          Mathf.PerlinNoise(Time.time * talkSpeed * 1.5f, 100f) * 0.5f;
+            float targetAngle = Mathf.Abs(Mathf.Sin(Time.time * talkSpeed + (noise * talkJitter * 10f))) * jawOpenAmount;
+            
+            // Apply smoothing
+            jawBone.localRotation = Quaternion.Slerp(jawBone.localRotation, _jawStartRot * Quaternion.Euler(targetAngle, 0, 0), 0.3f);
             updatedSpeakingPose = true;
         }
 
         if (_isSpeaking && HasMouthBlendShapes())
         {
-            float noise = Mathf.PerlinNoise(0f, Time.time * talkSpeed * 0.5f) * talkJitter;
-            float targetWeight = Mathf.Abs(Mathf.Sin(Time.time * talkSpeed + noise)) * mouthBlendShapeMaxWeight;
+            float noise = Mathf.PerlinNoise(100f, Time.time * talkSpeed * 0.7f);
+            float targetWeight = Mathf.Abs(Mathf.Sin(Time.time * talkSpeed + (noise * talkJitter * 10f))) * mouthBlendShapeMaxWeight;
             ApplyMouthWeight(targetWeight, false);
             updatedSpeakingPose = true;
         }
 
-        if (!updatedSpeakingPose && HasMouthBlendShapes())
+        // Fallback when no jaw bone and no blend shapes: animate the avatar's transform
+        // with a subtle head-nod so the user can see the interviewer is "speaking".
+        if (_isSpeaking && !updatedSpeakingPose && animator != null)
+        {
+            // Handled by Animator's isTalking bool state — nothing extra needed here.
+            updatedSpeakingPose = true;
+        }
+
+        if (!_isSpeaking && HasMouthBlendShapes())
         {
             ApplyMouthWeight(mouthBlendShapeRestWeight, false);
         }

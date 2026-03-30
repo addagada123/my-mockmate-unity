@@ -14,7 +14,7 @@ using UnityEngine.Networking;
 public class OpenAIWhisperSTT : MonoBehaviour
 {
     [Header("Settings")]
-    public string apiKey = "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";
+    public string apiKey = "";
     public string model = "whisper-1";
     public string language = "en";
 

@@ -21,8 +21,6 @@ public class MockmateVRFlowController : MonoBehaviour
     [SerializeField] private float nextQuestionDelaySeconds = 3.5f;
 
     [Header("Editor Preview")]
-    [SerializeField] private bool correctEditorPreviewHeight = true;
-    [SerializeField] private float editorPreviewYOffset = -1.7f;
 
     [Header("Events")]
     public UnityEvent<string> OnQuestionReceived;
@@ -53,8 +51,6 @@ public class MockmateVRFlowController : MonoBehaviour
     private string _transcript = "";
     private float _lastTranscriptUpdateAt = -1f;
     private int _activeQuestionIndex = 0;
-    private bool _editorCameraAdjusted;
-    private Vector3 _editorOriginalCameraLocalPosition;
 
     private void Awake()
     {
@@ -64,19 +60,11 @@ public class MockmateVRFlowController : MonoBehaviour
 
     private void Start()
     {
-        ApplyEditorPreviewHeightFix();
         _startedAt = Time.time;
         if (autoStartWhenTokenPresent && apiClient != null && !string.IsNullOrWhiteSpace(apiClient.BridgeToken))
             BeginFlow();
     }
 
-    private void OnDestroy()
-    {
-#if UNITY_EDITOR
-        if (_editorCameraAdjusted && Camera.main != null)
-            Camera.main.transform.localPosition = _editorOriginalCameraLocalPosition;
-#endif
-    }
 
     public void BeginFlow()
     {
@@ -151,8 +139,14 @@ public class MockmateVRFlowController : MonoBehaviour
         {
             OnQuestionSpeakingStart?.Invoke();
             PublishStatus("Interviewer speaking...");
-            float speakDuration = Mathf.Clamp((questionText ?? string.Empty).Length / Mathf.Max(5f, simulatedSpeakCharsPerSecond), 1f, 12f);
-            float maxWait = Mathf.Max(speakDuration, speechCompletionFallbackSeconds);
+            // Estimate how long speech will take at the configured reading speed.
+            float speakDuration = Mathf.Clamp(
+                (questionText ?? string.Empty).Length / Mathf.Max(5f, simulatedSpeakCharsPerSecond),
+                1f, 20f);
+            // Add a generous buffer for Backend TTS network round-trip (download + decode)
+            // Without this buffer the timeout fires before audio has even been fetched.
+            const float ttsFetchBuffer = 15f;
+            float maxWait = Mathf.Max(speakDuration + ttsFetchBuffer, speechCompletionFallbackSeconds);
             _awaitingQuestionSpeechCompletion = HasExternalSpeechHandler();
             if (_awaitingQuestionSpeechCompletion)
             {
@@ -224,7 +218,6 @@ public class MockmateVRFlowController : MonoBehaviour
         OnPrepTick?.Invoke(0f);
     }
 
-    // Hook this from your STT stream callback while user is speaking.
     public void AppendTranscriptChunk(string textChunk)
     {
         if (!_isListening) return;
@@ -233,6 +226,17 @@ public class MockmateVRFlowController : MonoBehaviour
         string normalizedChunk = textChunk.Trim();
         if (normalizedChunk.Length == 0)
             return;
+
+        // ── Reject STT error strings (e.g. "ERROR: Proxy error: 429") ──
+        // These come through when the backend STT proxy fails. We must not treat
+        // them as valid transcript content or the interview will submit an error
+        // string as the answer, causing index mismatches and 409 responses.
+        if (normalizedChunk.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase) ||
+            normalizedChunk.StartsWith("ERROR :", StringComparison.OrdinalIgnoreCase))
+        {
+            Debug.LogWarning($"[MockmateVR] STT returned an error chunk (ignoring): {normalizedChunk}");
+            return;
+        }
 
         // Some STT integrations repeatedly emit the full transcript-so-far or duplicate
         // chunks while the speaker is silent. Ignore no-op updates so silence detection
@@ -244,6 +248,14 @@ public class MockmateVRFlowController : MonoBehaviour
         if (_transcript.Length > 0) _transcript += " ";
         _transcript += normalizedChunk;
         _lastTranscriptUpdateAt = Time.time;
+    }
+
+    /// <summary>
+    /// For compatibility with STT clients that expect this exact name.
+    /// </summary>
+    public void OnTranscriptionReceived(string text)
+    {
+        AppendTranscriptChunk(text);
     }
 
     public void ForceSubmitCurrentAnswer()
@@ -270,14 +282,28 @@ public class MockmateVRFlowController : MonoBehaviour
             RaiseError("No current question loaded");
             return;
         }
-        if (string.IsNullOrWhiteSpace(transcript))
+
+        // ── Sanitize transcript: strip leftover error strings before submitting ──
+        string clean = transcript?.Trim() ?? "";
+        // Remove any error chunks that slipped through (defensive check)
+        if (clean.StartsWith("ERROR:", StringComparison.OrdinalIgnoreCase))
         {
-            RaiseError("Transcript is empty");
+            Debug.LogWarning("[MockmateVR] Transcript starts with an error string. Skipping submission.");
+            // Fetch next question instead of submitting bad data
+            StartCoroutine(apiClient.FetchNextQuestion(OnNextQuestionFetched));
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(clean))
+        {
+            // No answer detected (silence / STT failure). Submit placeholder so
+            // the session can continue rather than hanging.
+            Debug.LogWarning("[MockmateVR] No transcript detected. Submitting placeholder answer.");
+            clean = "(no answer detected)";
+        }
+
         _busy = true;
-        StartCoroutine(apiClient.SubmitAnswer(_activeQuestionIndex, transcript, OnAnswerSubmitted));
+        StartCoroutine(apiClient.SubmitAnswer(_activeQuestionIndex, clean, OnAnswerSubmitted));
     }
 
     private void OnAnswerSubmitted(VrAnswerResponse response, string error)
@@ -387,7 +413,12 @@ public class MockmateVRFlowController : MonoBehaviour
 
     private bool HasExternalSpeechHandler()
     {
-        return OnQuestionSpeakingStart != null && OnQuestionSpeakingStart.GetPersistentEventCount() > 0;
+        // Returns true only if there is at least one persistent Inspector-wired listener
+        // on OnQuestionSpeakingStart. Using _awaitingQuestionSpeechCompletion here was
+        // circular logic — it's set to the result of this function, so it was always false
+        // on the first call, bypassing the wait entirely.
+        return OnQuestionSpeakingStart != null &&
+               OnQuestionSpeakingStart.GetPersistentEventCount() > 0;
     }
 
     private void EndListeningSession()
@@ -399,25 +430,6 @@ public class MockmateVRFlowController : MonoBehaviour
         OnListeningEnd?.Invoke();
     }
 
-    private void ApplyEditorPreviewHeightFix()
-    {
-#if UNITY_EDITOR
-        if (!Application.isPlaying || !correctEditorPreviewHeight || Mathf.Approximately(editorPreviewYOffset, 0f))
-            return;
-
-        Camera mainCamera = Camera.main;
-        if (mainCamera == null)
-        {
-            PublishStatus("Editor preview height fix skipped: Main Camera not found.");
-            return;
-        }
-
-        _editorOriginalCameraLocalPosition = mainCamera.transform.localPosition;
-        mainCamera.transform.localPosition = _editorOriginalCameraLocalPosition + new Vector3(0f, editorPreviewYOffset, 0f);
-        _editorCameraAdjusted = true;
-        PublishStatus($"Editor preview camera Y adjusted by {editorPreviewYOffset:0.##}.");
-#endif
-    }
 
     private IEnumerator FetchInitialQuestionWithRetry()
     {
