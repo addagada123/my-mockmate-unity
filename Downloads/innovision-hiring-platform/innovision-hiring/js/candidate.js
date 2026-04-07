@@ -121,22 +121,20 @@ function validateStep1() {
     gulfExp:    document.getElementById('gulf_exp').value || 'Not specified'
   };
 
-  // Prevent duplicate users by phone/email, unless it's the same exact user profile.
+  // Prevent duplicate users by First Name + Last Name as requested
   const existing = loadAdminData();
-  const candPhoneDigits = phoneDigitsOnly(candidatePersonal.phone);
-  const candEmail = norm(candidatePersonal.email);
-  const conflicts = existing.filter(r => {
-    const samePhone = candPhoneDigits && phoneDigitsOnly(r.phone) === candPhoneDigits;
-    const sameEmail = candEmail && norm(r.email) === candEmail;
-    return samePhone || sameEmail;
-  });
+  
+  const fNameNorm = (fname || '').trim().toLowerCase();
+  const lNameNorm = (lname || '').trim().toLowerCase();
+  
+  const hasExactSameUser = existing.some(r => 
+      (r.firstName || '').trim().toLowerCase() === fNameNorm &&
+      (r.lastName || '').trim().toLowerCase() === lNameNorm
+  );
 
-  if (conflicts.length) {
-    const hasExactSameUser = conflicts.some(r => samePersonDetails(r, candidatePersonal));
-    if (!hasExactSameUser) {
-      showToast('User already exists with this mobile number or email.', 'danger');
+  if (hasExactSameUser) {
+      showToast('A user already exists with this First Name and Last Name.', 'danger');
       return;
-    }
   }
 
   S.personal = candidatePersonal;

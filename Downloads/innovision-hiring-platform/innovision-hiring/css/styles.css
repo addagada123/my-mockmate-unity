@@ -672,15 +672,15 @@ select.form-input { cursor: pointer; }
   background: rgba(2, 6, 23, 0.04);
 }
 .sb-item:focus { outline: 2px solid var(--gold); outline-offset: -2px; }
-/* Selected row: left bar + top/bottom rules only (no right border, no end rounding); label stays navy */
+/* Selected row: left bar only; label stays navy */
 .sb-item.active {
   color: var(--text);
   font-weight: 700;
   border-radius: 0;
   margin-right: 0;
   border-left: 3px solid var(--gold);
-  border-top: 1px solid var(--gold);
-  border-bottom: 1px solid var(--gold);
+  border-top: none;
+  border-bottom: none;
   border-right: none;
   background: linear-gradient(
     90deg,

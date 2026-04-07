@@ -418,7 +418,18 @@ const STORAGE_KEY = 'inv_candidates';
 
 function loadAdminData() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    // Deduplicate by First Name + Last Name (case-insensitive) to prevent redundant rows
+    const uniqueMap = new Map();
+    raw.forEach(r => {
+      const key = ((r.firstName || '').trim().toLowerCase() + '|' + (r.lastName || '').trim().toLowerCase());
+      uniqueMap.set(key, r); // Later entries automatically overwrite older ones
+    });
+    const result = Array.from(uniqueMap.values());
+    if (result.length !== raw.length) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(result)); // self-heal
+    }
+    return result;
   } catch (e) {
     console.warn('Innovision: failed to load candidate data', e);
     return [];

@@ -688,15 +688,15 @@ select.form-input { cursor: pointer; }
   background: rgba(2, 6, 23, 0.04);
 }
 .sb-item:focus { outline: 2px solid var(--gold); outline-offset: -2px; }
-/* Selected row: left bar + top/bottom rules only (no right border, no end rounding); label stays navy */
+/* Selected row: left bar only; label stays navy */
 .sb-item.active {
   color: var(--text);
   font-weight: 700;
   border-radius: 0;
   margin-right: 0;
   border-left: 3px solid var(--gold);
-  border-top: 1px solid var(--gold);
-  border-bottom: 1px solid var(--gold);
+  border-top: none;
+  border-bottom: none;
   border-right: none;
   background: linear-gradient(
     90deg,
@@ -2240,22 +2240,20 @@ function validateStep1() {
     gulfExp:    document.getElementById('gulf_exp').value || 'Not specified'
   };
 
-  // Prevent duplicate users by phone/email, unless it's the same exact user profile.
+  // Prevent duplicate users by First Name + Last Name as requested
   const existing = loadAdminData();
-  const candPhoneDigits = phoneDigitsOnly(candidatePersonal.phone);
-  const candEmail = norm(candidatePersonal.email);
-  const conflicts = existing.filter(r => {
-    const samePhone = candPhoneDigits && phoneDigitsOnly(r.phone) === candPhoneDigits;
-    const sameEmail = candEmail && norm(r.email) === candEmail;
-    return samePhone || sameEmail;
-  });
+  
+  const fNameNorm = (fname || '').trim().toLowerCase();
+  const lNameNorm = (lname || '').trim().toLowerCase();
+  
+  const hasExactSameUser = existing.some(r => 
+      (r.firstName || '').trim().toLowerCase() === fNameNorm &&
+      (r.lastName || '').trim().toLowerCase() === lNameNorm
+  );
 
-  if (conflicts.length) {
-    const hasExactSameUser = conflicts.some(r => samePersonDetails(r, candidatePersonal));
-    if (!hasExactSameUser) {
-      showToast('User already exists with this mobile number or email.', 'danger');
+  if (hasExactSameUser) {
+      showToast('A user already exists with this First Name and Last Name.', 'danger');
       return;
-    }
   }
 
   S.personal = candidatePersonal;
